@@ -21,4 +21,5 @@ namespace rssisim {
         ray_pwr += path_loss;
         return ray_pwr;
     }
+
 }

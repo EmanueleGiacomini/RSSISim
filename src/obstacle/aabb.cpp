@@ -7,6 +7,7 @@
 
 namespace rssisim {
     bool AxisAlignedBoundingBox::intersect(const Eigen::Vector2f &p, const Eigen::Vector2f &d, Eigen::Vector2f &p_start, Eigen::Vector2f &p_end) {
+        // 
         return false;
     }
 
