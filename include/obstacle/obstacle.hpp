@@ -4,11 +4,15 @@
 
 #pragma once
 #include <Eigen/Dense>
+#include <path_loss/path_loss.hpp>
 
 namespace rssisim {
     class Obstacle {
+        protected:
+        PathLoss *p_loss;
+        Obstacle(PathLoss *_p_loss) : p_loss(_p_loss) {}
         public:
-        virtual bool intersect(const Eigen::Vector2f &p, const Eigen::Vector2f &d, Eigen::Vector2f &p_start, Eigen::Vector2f &p_end)=0;
-        virtual double sample(double distance)=0;
+        inline void add_loss(PathLoss *_p_loss) {p_loss = _p_loss;}
+        inline PathLoss *get_loss() {return p_loss;}
     };
 }

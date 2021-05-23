@@ -10,6 +10,7 @@
 
 namespace rssisim {
     inline bool intersect_bbox(const Ray2f &ray, const AxisAlignedBoundingBox &bbox, double &t) {
+        
         // Check for Ray2f-AxisAlignedBoundingBox intersection
         // https://gamedev.stackexchange.com/questions/18436/most-efficient-aabb-vs-ray-collision-algorithms
         Ray2f idir;
@@ -34,9 +35,10 @@ namespace rssisim {
             t = t_max;
             return false;
         }
-        t = t_min;
+        t = t_min < 0 ? t_max : t_min;
         return true;
     }
+
     // TODO (Add other obstacle intersection functions)
 }
 

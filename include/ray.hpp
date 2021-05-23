@@ -27,9 +27,14 @@ namespace rssisim {
   struct Ray2f{
     Eigen::Vector2f pos;
     Eigen::Vector2f dir;
+    Eigen::Vector2f idir;
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     Ray2f() {};
-    Ray2f(Eigen::Vector2f _pos, Eigen::Vector2f _dir): pos(_pos), dir(_dir) {}
+    Ray2f(Eigen::Vector2f _pos, Eigen::Vector2f _dir): pos(_pos), dir(_dir) {
+      idir.x() = 1/dir.x();
+      idir.y() = 1/dir.y();
+    }
+    
     inline double cast(Eigen::Vector2f target) {return (target.x() - pos.x()) / dir.x();}
   };
 }
