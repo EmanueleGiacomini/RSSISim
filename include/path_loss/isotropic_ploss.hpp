@@ -9,6 +9,6 @@ namespace rssisim {
         double attenuation; // Attenuation in dB/mm
         public:
         IsotropicPathLoss(double _attenuation) : attenuation(_attenuation) {}
-        inline double sample(double distance) {return - 1e-3 * distance * attenuation;} //assuming distance is in meters
+        inline double sample(double distance) {return - 1e3 * distance * attenuation;} //assuming distance is in meters
     };
 }

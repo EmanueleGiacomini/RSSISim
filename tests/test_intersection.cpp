@@ -6,6 +6,7 @@
 #include <fstream>
 #include <algorithm>
 #include <Eigen/Dense>
+#include <memory>
 
 #include "obstacle/aabb.hpp"
 #include "path_loss/isotropic_ploss.hpp"
@@ -21,13 +22,12 @@ double raytrace_trace(const rssisim::Map &world, const Eigen::Vector2f source, c
     
     bool in_obstacle=false;
     rssisim::Obstacle *ref_obstacle=nullptr;
-    rssisim::PathLoss *it_loss=world.get_loss();
+    std::shared_ptr<rssisim::PathLoss> it_loss=world.get_loss();
 
     double cumulative_loss = 0.0;
 
     // Casting loop
-    while (!((ray.pos-target).norm() < 1e-6)) {
-
+    while (!((target-ray.pos).norm() < 1e-3)) {
         if (in_obstacle) {
             it_loss = ref_obstacle->get_loss();
         } else {
@@ -36,27 +36,24 @@ double raytrace_trace(const rssisim::Map &world, const Eigen::Vector2f source, c
 
         double t = ray.cast(target);
         // AABB Intersection block
-        double min_obst_t = 1e9;
+        double min_obst_t = INFINITY;
         rssisim::Obstacle *min_obst = nullptr;
-        std::vector<rssisim::AxisAlignedBoundingBox> aabb_vect=world.get_bbox_vect();
-        for (auto &obst : aabb_vect) {
+        for (auto &obst : world.get_bbox_vect()) {
             double t_obst;
-            bool obst_intersect = rssisim::intersect_bbox(ray, obst, t_obst);
-            //std::cout << t_obst << ", " << obst_intersect << std::endl;
+            bool obst_intersect = rssisim::intersect_bbox(ray, *obst, t_obst);
+            //std::cout << "obstacle collision check=" << obst_intersect << " at distance=" << t_obst << std::endl;
             if (obst_intersect && t_obst < min_obst_t) {
                 min_obst_t = t_obst;
-                min_obst = &obst;
+                min_obst = obst;
             }
         }
         // check if we are intersecting an obstacle
-        if (min_obst_t < t && min_obst != nullptr) {
+        if (min_obst_t > 0 && min_obst_t < t && min_obst != nullptr) {
             // ray is colliding with an obstacle
-            t = min_obst_t + 1e-9;
+            t = min_obst_t + 1e-3;
             in_obstacle=!in_obstacle;
             ref_obstacle = min_obst;
-            //std::cout << "Colliding with a box at distance t=" << t <<", entering=" << in_obstacle << std::endl;
         }
-        
         cumulative_loss += it_loss->sample(t);
         ray.pos += t * ray.dir;
 
@@ -68,31 +65,37 @@ const double TX_POWER = 1; // [W]
 const double BLE_LAMBDA = 0.1206; // BLE wavelenght [m]
 
 int main(int argc, char **argv) {
-    rssisim::IdealPathLoss world_loss(BLE_LAMBDA);
-    rssisim::IsotropicPathLoss concrete_ploss(0.5);
+    std::shared_ptr<rssisim::IdealPathLoss> world_loss(new rssisim::IdealPathLoss(BLE_LAMBDA));
+    std::shared_ptr<rssisim::IsotropicPathLoss> concrete_ploss(new rssisim::IsotropicPathLoss(0.01));
     // Generate world and register some obstacles
-    rssisim::Map world(&world_loss);
-    world.add(rssisim::AxisAlignedBoundingBox(Eigen::Vector2f(0.5, -0.5), Eigen::Vector2f(1.5, 0.5), &concrete_ploss));
-    world.add(rssisim::AxisAlignedBoundingBox(Eigen::Vector2f(1, 1),      Eigen::Vector2f(3, 2), &concrete_ploss));
-    world.add(rssisim::AxisAlignedBoundingBox(Eigen::Vector2f(2, -1),     Eigen::Vector2f(5, 1.5), &concrete_ploss));
-    world.add(rssisim::AxisAlignedBoundingBox(Eigen::Vector2f(-5, -1),    Eigen::Vector2f(3, 3), &concrete_ploss));
+    rssisim::Map world(world_loss);
+    world.add(new rssisim::AxisAlignedBoundingBox(Eigen::Vector2f(50, 40), Eigen::Vector2f(80, 41), concrete_ploss));
+    world.add(new rssisim::AxisAlignedBoundingBox(Eigen::Vector2f(20, 0), Eigen::Vector2f(40, 4), concrete_ploss));
+    world.add(new rssisim::AxisAlignedBoundingBox(Eigen::Vector2f(0, 70), Eigen::Vector2f(40, 75), concrete_ploss));
+    world.add(new rssisim::AxisAlignedBoundingBox(Eigen::Vector2f(30, 0), Eigen::Vector2f(50, 10), concrete_ploss));
 
 
     // Store results on file
     std::ofstream file;
     file.open("data.csv");
-    file << "x,y,recv_pwr\n";
-
-    for (double x=0.5; x < 100; x+=0.1) {
-        for (double y=0.5; y < 100; y+=0.1) {
+    file << "x,y,recv_pwr0,recv_pwr1,recv_pwr2\n";
+    
+    for (double x=0.5; x < 100; x+=1) {
+        for (double y=0.5; y < 100; y+=1) {   
             Eigen::Vector2f target(x, y);
-            double recv_loss = raytrace_trace(world, Eigen::Vector2f(0, 0), target);
-            std::cout << recv_loss << std::endl;
-            double recv_pwr = rssisim::dbmtw(rssisim::wtdbm(TX_POWER) + recv_loss);
+            double recv_loss0 = raytrace_trace(world, Eigen::Vector2f(0, 0), target);
+            double recv_loss1 = raytrace_trace(world, Eigen::Vector2f(80, 101), target);
+            double recv_loss2 = raytrace_trace(world, Eigen::Vector2f(101, 0), target);
+            //std::cout << recv_loss << std::endl;
+            double recv_pwr0 = rssisim::wtdbm(TX_POWER) + recv_loss0;
+            double recv_pwr1 = rssisim::wtdbm(TX_POWER) + recv_loss1;
+            double recv_pwr2 = rssisim::wtdbm(TX_POWER) + recv_loss2;
 
-            //file << x << "," << y << "," << recv_pwr << "\n";
+            file << x << "," << y << "," << recv_pwr0 << "," << recv_pwr1 << "," << recv_pwr2 << "\n";
         }
     }
-    file.close();
+    
+    std::cout << "Done" << std::endl;
+    //file.close();
     return 0;
 }
