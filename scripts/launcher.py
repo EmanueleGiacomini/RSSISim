@@ -22,6 +22,8 @@ if __name__ == '__main__':
     parser.add_argument('--model', help='model file path. If train flag is enabled, the path is used to store the new '
                                         'model', type=str, required=True)
     parser.add_argument('--plot', help='plot flag. Plot the resulting map', required=False, action='store_true')
+    parser.add_argument('--plot_samples', help='plot samples.', default=False, action='store_true',
+                        required=False)
     parser.add_argument('--min_x', help='minimum x coordinate for plot area.', type=float, required=False, default=0)
     parser.add_argument('--min_y', help='minimum y coordinate for plot area.', type=float, required=False, default=0)
     parser.add_argument('--max_x', help='maximum x coordinate for plot area.', type=float, required=False, default=500)
@@ -80,13 +82,17 @@ if __name__ == '__main__':
     # Plot section ----------------------------------------------------------------------------
     if args.plot:
         print('Plotting results')
-        fig, axs = build_generic_canvas(1, len(gw_pos), figsize=(len(gw_pos) * 10, 5))
+        fig, axs = build_generic_canvas(1, len(gw_pos), figsize=(len(gw_pos) * 8, 5))
         for i in range(len(gw_pos)):
             axs[i].set_title(f'Estimate for GW_{i}')
             axs[i].set_xlabel('x')
             axs[i].set_ylabel('y')
             draw_model_prediction(fig, axs[i], model, i, (args.min_x, args.min_y), (args.max_x, args.max_y))
-            draw_samples(axs[i], data_x)
+            if args.plot_samples:
+                samples_scat = draw_samples(axs[i], data_x, data_y[:, i])
+            gw_scat = draw_gw(axs[i], gw_pos[i])
+            axs[i].set_xlim(args.min_x, args.max_x)
+            axs[i].set_ylim(args.min_y, args.max_y)
         plt.tight_layout()
         plt.show()
     exit(0)
