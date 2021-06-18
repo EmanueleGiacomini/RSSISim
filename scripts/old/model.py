@@ -45,18 +45,20 @@ class RadioRSSIRegressor(nn.Module):
         """
         return -20 * torch.log10(4 * np.pi * r / self.wl)
 
-    def forward(self, x):
+    def forward(self, x, apply_ploss=True):
         # Convert input to polar coordinates
         x_polar = self.xy2rt(x)
         x_polar = torch.transpose(x_polar, 1, 0)
         out = nn.ReLU()(self.layer_lst[0](x_polar))
         for i in range(1, self.n_layers - 1):
-            out = nn.ReLU()(self.layer_lst[i](out))
+            out = nn.Sigmoid()(self.layer_lst[i](out))
         out = self.layer_lst[-1](out)
         # out represents the obstacle residual estimated loss
         # Augment out with the estimated free-space loss
         fs_loss = torch.resize_as_(self.freespace_loss(x_polar[:, 0]), out)
-        return fs_loss + out
+        if apply_ploss:
+            return fs_loss + out
+        return out
 
 
 if __name__ == '__main__':
