@@ -9,6 +9,18 @@ import argparse
 import os
 import torch
 
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+
 if __name__ == '__main__':
     # Parse arguments
     parser = argparse.ArgumentParser(prog='rssisim_launcher',
@@ -24,6 +36,8 @@ if __name__ == '__main__':
     parser.add_argument('--plot', help='plot flag. Plot the resulting map', required=False, action='store_true')
     parser.add_argument('--plot_samples', help='plot samples.', default=False, action='store_true',
                         required=False)
+    parser.add_argument('--plot_training', help='Online plot regression boundaries during training', required=False,
+                        action='store_true', default=False)
     parser.add_argument('--min_x', help='minimum x coordinate for plot area.', type=float, required=False, default=0)
     parser.add_argument('--min_y', help='minimum y coordinate for plot area.', type=float, required=False, default=0)
     parser.add_argument('--max_x', help='maximum x coordinate for plot area.', type=float, required=False, default=500)
@@ -38,7 +52,7 @@ if __name__ == '__main__':
     # Parse data files ------------------------------------------
     data_fname = args.data
     if not os.path.isfile(data_fname):
-        raise Exception(f'{data_fname} does not exists.')
+        raise Exception(bcolors.FAIL + f'{data_fname} does not exists.' + bcolors.ENDC)
 
     gw_pos = None
     if args.data_gw:
@@ -46,7 +60,7 @@ if __name__ == '__main__':
         if not os.path.isfile(data_fname):
             raise Exception(f'{data_fname} does not exists.')
         gw_pos = DataReader.read_gw_info(data_gw_fname)
-    print('Loaded following GW info:')
+    print(bcolors.OKGREEN + 'Loaded following GW info:' + bcolors.ENDC)
     for i, p in enumerate(gw_pos):
         print(f'GW_{i}={p}')
 
@@ -59,30 +73,31 @@ if __name__ == '__main__':
         else:
             raise Exception('Unknown data format for data file: ' + data_fname)
     else:
-        print('WARNING: no data file type passed. Using deduction heuristics')
+        print(bcolors.WARNING + 'WARNING: no data file type passed. Using deduction heuristics' + bcolors.ENDC)
         if 'omnet' in data_fname:
             data_ftype = FileType.OMNET
         else:
             data_ftype = FileType.RSSISIM
-    print(f'Opening data file: {data_fname} as {data_ftype} type')
+    print(bcolors.OKGREEN + f'Opening data file: {data_fname} as {data_ftype} type' + bcolors.ENDC)
     data_x, data_y, gw_pos = DataReader.read(data_fname, data_ftype, gw_pos)
     assert data_x is not None and data_y is not None and gw_pos is not []
-    print(f'Read {data_x.shape[0]} samples.')
+    print(bcolors.OKGREEN + f'Read {data_x.shape[0]} samples.' + bcolors.ENDC)
     # Training / Evaluation section ----------------------------------------------------------
     if args.train:
-        print('Training mode')
+        print(bcolors.OKCYAN + 'Training mode' + bcolors.ENDC)
         model = MultiGWRegressor(len(gw_pos), gw_pos, wl=args.wavelength)
         model = Trainer.train(data_x, data_y, model, optimizer=args.optimizer, epochs=args.epochs,
-                              best_fit=True, early_stop=-1, lr=1e-3)
+                              best_fit=True, early_stop=-1, lr=1e-3, plot_training=args.plot_training)
+                              #best_fit=True, early_stop=-1, lr=1e-2, plot_training=args.plot_training)
         # Store model
         torch.save(model, args.model)
     else:
-        print('Evaluation mode')
+        print(bcolors.OKCYAN + 'Evaluation mode' + bcolors.ENDC)
         model = torch.load(args.model)
     # Plot section ----------------------------------------------------------------------------
     if args.plot:
-        print('Plotting results')
-        fig, axs = build_generic_canvas(1, len(gw_pos), figsize=(len(gw_pos) * 8, 5))
+        print(bcolors.OKGREEN + 'Plotting results' + bcolors.ENDC)
+        fig, axs = build_generic_canvas(1, len(gw_pos), figsize=(len(gw_pos) * 5, 5))
         for i in range(len(gw_pos)):
             axs[i].set_title(f'Estimate for GW_{i}')
             axs[i].set_xlabel('x')
