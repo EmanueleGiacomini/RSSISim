@@ -1,13 +1,14 @@
 """launcher.py
 """
 
-from lib.io_utils import DataReader, FileType
+from lib.io_utils import DataReader, FileType, LoadFromFile
 from lib.regressor import MultiGWRegressor, Trainer
 from lib.plot_utils import *
 
 import argparse
 import os
 import torch
+import json
 
 class bcolors:
     HEADER = '\033[95m'
@@ -32,7 +33,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', help='number of epochs required to train the model', type=int, default=40000,
                         required=False)
     parser.add_argument('--model', help='model file path. If train flag is enabled, the path is used to store the new '
-                                        'model', type=str, required=True)
+                                        'model', type=str, required=False)
     parser.add_argument('--plot', help='plot flag. Plot the resulting map', required=False, action='store_true')
     parser.add_argument('--plot_samples', help='plot samples.', default=False, action='store_true',
                         required=False)
@@ -40,18 +41,37 @@ if __name__ == '__main__':
                         action='store_true', default=False)
     parser.add_argument('--min_x', help='minimum x coordinate for plot area.', type=float, required=False, default=0)
     parser.add_argument('--min_y', help='minimum y coordinate for plot area.', type=float, required=False, default=0)
-    parser.add_argument('--max_x', help='maximum x coordinate for plot area.', type=float, required=False, default=500)
-    parser.add_argument('--max_y', help='maximum y coordinate for plot area.', type=float, required=False, default=500)
+    parser.add_argument('--max_x', help='maximum x coordinate for plot area.', type=float, required=False, default=100)
+    parser.add_argument('--max_y', help='maximum y coordinate for plot area.', type=float, required=False, default=100)
     parser.add_argument('--resolution', help='resolution of the plot grid', type=float, required=False, default=1)
-    parser.add_argument('--data', help='dataset file path', type=str, required=True)
+    parser.add_argument('--data', help='dataset file path', type=str, required=False)
     parser.add_argument('--data_gw', help='gateway info file path', type=str, required=False)
     parser.add_argument('--data_type', help='dataset file type [rssisim | omnet]', type=str, required=False)
+    parser.add_argument("--config", help="configuration file for the current execution", type=open, required=False, default=None,
+        action=LoadFromFile)
+
+    parser.add_argument("--h_dim", help="dimension of latent space for neural network (height of layer)", type=int, default=10, required=False)
+    parser.add_argument("--num_layers", help="number of layers for the neural network (depth of network)", type=int, default=5, required=False)
+    parser.add_argument("--polar", help="Transform model's feature into polar coordinates", type=bool, default=False, required=False)
+    parser.add_argument("--batch", help="Size of training batches", type=int, default=64, required=False)
+    parser.add_argument("--tx_pwr", help="Tx power of the moving beacon in Watts", type=float, default=1, required=False)
 
     args = parser.parse_args()
 
+    run_config = {}
+    # Check for config file
+    if args.config is not None:
+        print(bcolors.OKGREEN + 'Opening configuration file...', end='')
+        if not os.path.isfile(args.config):
+            raise Exception(f'{args.config} does not exists.')
+        with open(args.config) as f:
+            config_json = json.load(f)
+        # TODO
+        print('OK.' + bcolors.ENDC)
+
     # Parse data files ------------------------------------------
     data_fname = args.data
-    if not os.path.isfile(data_fname):
+    if not data_fname or not os.path.isfile(data_fname):
         raise Exception(bcolors.FAIL + f'{data_fname} does not exists.' + bcolors.ENDC)
 
     gw_pos = None
@@ -84,8 +104,10 @@ if __name__ == '__main__':
     print(bcolors.OKGREEN + f'Read {data_x.shape[0]} samples.' + bcolors.ENDC)
     # Training / Evaluation section ----------------------------------------------------------
     if args.train:
+        # Train/Test split
+
         print(bcolors.OKCYAN + 'Training mode' + bcolors.ENDC)
-        model = MultiGWRegressor(len(gw_pos), gw_pos, wl=args.wavelength)
+        model = MultiGWRegressor(len(gw_pos), gw_pos, wl=args.wavelength, n_layers=args.n_layers, h_dim=args.h_dim, tx_pwr=args.tx_pwr)
         model = Trainer.train(data_x, data_y, model, optimizer=args.optimizer, epochs=args.epochs,
                               best_fit=True, early_stop=-1, lr=1e-3, plot_training=args.plot_training)
                               #best_fit=True, early_stop=-1, lr=1e-2, plot_training=args.plot_training)
