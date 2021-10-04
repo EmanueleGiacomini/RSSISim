@@ -80,6 +80,13 @@ class DataReader:
                 gw_pos.append(gw_p)
         return gw_pos
 
+    @staticmethod
+    def augmentDetection(data_y: np.array, detection_threshold: float) -> np.array:
+        augm_y = np.zeros((data_y.shape[0], data_y.shape[1], 2))
+        augm_y[:, :, 0] = data_y
+        augm_y[:, :, 1] = data_y > detection_threshold        
+        return augm_y.astype(np.float32)
+
 
 if __name__ == '__main__':
     print(f'Data_reader test')

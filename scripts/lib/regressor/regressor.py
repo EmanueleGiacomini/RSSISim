@@ -10,24 +10,27 @@ from ..io_utils import DataReader, FileType
 
 class SingleGWRegressor(nn.Module):
     def __init__(self, n_layers: int = 10, h_dim: int = 10, source_pos: torch.Tensor = torch.Tensor([0, 0]),
-                 wl: float = 0.1206, tx_pwr: float = 2+3*np.random.uniform(0, 4), polar=False):
+                 wl: float = 0.1206, tx_pwr: float = 2+3*np.random.uniform(0, 4), polar=False, detection_estimation=False):
         """
 
         :param n_layers: number of hidden layers to be used
         :param h_dim: dimension of each hidden layer (Latent space dimension)
         :param source_pos: Cartesian tensor representing the position of the gateway
         :param wl: Wavelength of the radio wave expressed in meters [m]
+        :param polar: Enable polar coordinate transformer if True
+        :param detection_feature: Enable detection estimation. Model's output is now (Rssi, Detect) where Detect is the detection flag
         """
         super(SingleGWRegressor, self).__init__()
         self.n_layers = n_layers
         self.layer_lst = nn.ModuleList(
             [nn.Linear(2, h_dim)] +
             [nn.Linear(h_dim, h_dim) for _ in range(n_layers)] +
-            [nn.Linear(h_dim, 1)])
+            [nn.Linear(h_dim, 1) if detection_estimation is False else nn.Linear(h_dim, 2)])
         self.source_pos = source_pos
         self.wl = wl
         self.tx_pwr = tx_pwr
         self.polar = polar
+        self.detection_estimation = detection_estimation
 
     def xy2rt(self, x: torch.Tensor) -> torch.Tensor:
         """ Converts the input feature Tensor x containing cartesian coordinates of sampled points into
@@ -71,26 +74,41 @@ class SingleGWRegressor(nn.Module):
         
         for i in range(1, self.n_layers - 1):
             out = nn.ReLU()(self.layer_lst[i](out))
+        
+        if self.detection_estimation is False:
+            out = self.layer_lst[-1](out)
+            # out represents the obstacle residual estimated loss
+            # Augment out with the estimated free-space loss
+            fs_loss = torch.resize_as_(self.freespace_loss(x_polar[:, 0]), out)
+            if apply_ploss:
+                return fs_loss + out
+            return out
+        
         out = self.layer_lst[-1](out)
-        # out represents the obstacle residual estimated loss
-        # Augment out with the estimated free-space loss
-        fs_loss = torch.resize_as_(self.freespace_loss(x_polar[:, 0]), out)
         if apply_ploss:
-            return fs_loss + out
+            out[:, 0] += torch.resize_as_(self.freespace_loss(x_polar[:, 0]), out[:, 0])
+        out[:, 1] = nn.Sigmoid()(out[:, 1])
         return out
 
 
 class MultiGWRegressor(nn.Module):
-    def __init__(self, n_gw: int, gw_pos: [np.float32], *args, **kwargs):
+    def __init__(self, n_gw: int, gw_pos: [np.float32], detection_estimation: bool = False, *args, **kwargs):
         super(MultiGWRegressor, self).__init__()
         self.n_gw = n_gw
-        self.submodule_lst = nn.ModuleList([SingleGWRegressor(**kwargs, source_pos=gw_pos[i]) for i in range(n_gw)])
+        self.detection_estimation = detection_estimation
+        self.submodule_lst = nn.ModuleList([SingleGWRegressor(**kwargs, source_pos=gw_pos[i], detection_estimation=detection_estimation) for i in range(n_gw)])
 
     def forward(self, x, apply_ploss=True):
-        z = torch.zeros(x.shape[0], self.n_gw).to(next(self.parameters()).device)
-        for i in range(self.n_gw):
-            z[:, i] = self.submodule_lst[i](x, apply_ploss)[:, -1]
-        return z
+        if self.detection_estimation is False:
+            z = torch.zeros(x.shape[0], self.n_gw).to(next(self.parameters()).device)
+            for i in range(self.n_gw):
+                z[:, i] = self.submodule_lst[i](x, apply_ploss)[:, -1]
+            return z
+        else:
+            z = torch.zeros(x.shape[0], self.n_gw, 2).to(next(self.parameters()).device)
+            for i in range(self.n_gw):
+                z[:, i, :] = self.submodule_lst[i](x, apply_ploss)
+            return z
 
 
 def test_MultiGWRegressor():

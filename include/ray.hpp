@@ -35,6 +35,8 @@ namespace rssisim {
       idir.y() = 1/dir.y();
     }
     
-    inline double cast(Eigen::Vector2f target) {return (target.x() - pos.x()) * idir.x();}
+    inline double cast(Eigen::Vector2f target) {
+      return dir.dot(target-pos);
+    }
   };
 }

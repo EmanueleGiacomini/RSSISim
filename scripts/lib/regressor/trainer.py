@@ -47,10 +47,10 @@ class Trainer():
     @staticmethod
     def train(train_x: np.float32, train_y: np.float32, model: nn.Module, optimizer: str, lr: float, epochs: int,
               best_fit: bool = True, early_stop: int = -1, plot_training: bool = False, train_test_split = 0.6, batch_size=64,
-              *args, **kwargs):
+              cuda_en: bool = True, detection_flag: bool = False, *args, **kwargs) -> (nn.Module, np.float32, np.float32):
 
 
-        use_cuda = torch.cuda.is_available()
+        use_cuda = torch.cuda.is_available() and cuda_en
         device = torch.device('cuda:0' if use_cuda else 'cpu')
         torch.backends.cudnn.benchmark = True
 
@@ -64,7 +64,14 @@ class Trainer():
             optim = torch.optim.SGD(model.parameters(), lr=lr, **kwargs)
         else:
             raise Exception(f'{optimizer} is not a valid optimizer')
-        loss_fn = nn.MSELoss(reduction='mean').to(device)
+
+        if detection_flag is False:
+            loss_fn = nn.MSELoss(reduction='mean').to(device)
+        else:
+            # Main idea:
+            # loss = k1 * MSE(Rssi_pred, Rssi_gt) * Detect_gt + k2 * BCE(Detect_pred, Detect_gt)
+            rssi_loss_fn = nn.MSELoss(reduction='none').to(device)
+            detect_loss_fn = nn.BCELoss(reduction='none').to(device)
 
         if plot_training:
             fig, axs = plt.subplots(1, train_y.shape[1], figsize=(10, 10))
@@ -75,6 +82,9 @@ class Trainer():
         early_stop_ctr = 0
 
         train_loader, test_loader = TorchDataHandler.parse_data(train_x, train_y, batch_size, train_test_split)
+
+        train_loss = np.zeros((epochs,))
+        train_val_loss = np.zeros((epochs,))
         
         # Training loop
         t0 = time.perf_counter()
@@ -82,13 +92,20 @@ class Trainer():
             # Training
             batch_t_loss = 0
             for local_batch, local_labels in train_loader:
+                optim.zero_grad()
                 local_batch, local_labels = local_batch.to(device), local_labels.to(device)
                 pred_batch = model(local_batch)
-                loss = loss_fn(pred_batch, local_labels)
-                batch_t_loss += loss.cpu().float()
-                optim.zero_grad()
-                loss.backward()
+                if detection_flag is False:
+                    loss = loss_fn(pred_batch, local_labels)
+                    loss.backward()
+                else:
+                    loss = 10 * rssi_loss_fn(pred_batch[:,:,0], local_labels[:,:,0]) * local_labels[:,:,1] + \
+                        detect_loss_fn(torch.round(pred_batch[:,:,1]), torch.round(local_labels[:,:,1]))
+                    loss = loss.sum() / batch_size
+                    loss.backward()
                 optim.step()
+                batch_t_loss += loss.cpu().float()
+                
             batch_t_loss /= len(train_loader)
             
             # Validation
@@ -97,10 +114,30 @@ class Trainer():
                 for local_batch, local_labels in test_loader:
                     local_batch, local_labels = local_batch.to(device), local_labels.to(device)
                     pred_batch = model(local_batch)
-                    loss = loss_fn(pred_batch, local_labels)
-                    batch_v_loss += loss.cpu().float()            
+                    if detection_flag is False:
+                        loss = loss_fn(pred_batch, local_labels)
+                    else:
+                        
+                        loss = rssi_loss_fn(pred_batch[:,:,0], local_labels[:,:,0]) * local_labels[:,:,1] + \
+                            detect_loss_fn(torch.round(pred_batch[:,:,1]), torch.round(local_labels[:,:,1]))
+                        loss = loss.mean()    
+                    batch_v_loss += loss.cpu().float()
+            
             batch_v_loss /= len(test_loader)
 
+            train_loss[it] = batch_t_loss
+            train_val_loss[it] = batch_v_loss
+
+            if plot_training:
+                if it % 1 == 0:
+                    for gw in range(train_y.shape[1]):
+                        axs[gw].clear()
+                        draw_model_prediction(fig, axs[gw], model, gw, colorbar=False, resolution=1, 
+                            detection_flag=detection_flag, device=device)
+                        draw_samples(axs[gw], train_x, p_val=train_y[:, gw, :], detection_flag=detection_flag)
+                    plt.pause(.01)
+                    plt.draw()
+            
             # Get best model
             if best_fit:
                 if batch_v_loss < best_loss:
@@ -108,51 +145,10 @@ class Trainer():
                     best_model_state_dict = {k:v.cpu() for k, v in model.state_dict().items()}
                     best_model_state_dict = OrderedDict(best_model_state_dict)
 
-
-            
             t1 = time.perf_counter() - t0
             _progress_cb(it + 1, epochs, 'Training', t1, batch_t_loss, batch_v_loss, best_loss)
         if best_fit:
             model.cpu()
             model.load_state_dict(best_model_state_dict)
-        return model
-
-
-
-
-
-
-        """
-            for x_train, y_train in train_loader:
-                y_pred = model(x_torch)
-                loss = loss_fn(y_pred, y_torch)
-                optim.zero_grad()
-                loss.backward()
-                optim.step()
-            if best_fit:
-                if loss < best_loss:
-                    best_loss = loss
-                    best_model = deepcopy(model)
-            if early_stop > 0:
-                if loss < best_loss:
-                    best_loss = loss
-                    early_stop_ctr = 0
-                else:
-                    early_stop_ctr += 1
-                if early_stop_ctr > early_stop:
-                    break
-            if plot_training:
-                if it % 1000 == 0:
-                    for gw in range(train_y.shape[1]):
-                        axs[gw].clear()
-                        draw_model_prediction(fig, axs[gw], model, gw, colorbar=False, resolution=1)
-                        draw_samples(axs[gw], train_x, p_val=train_y[:, gw])
-                    plt.pause(.01)
-                    plt.draw()
-            t1 = time.perf_counter() - t0
-            _progress_cb(it + 1, epochs, 'Training', t1, loss, best_loss)
-        if best_fit:
-            model = best_model
-        # Model is trained
-        return model
-    """
+        
+        return model, train_loss, train_val_loss

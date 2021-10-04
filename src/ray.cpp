@@ -15,7 +15,8 @@ namespace rssisim {
         Eigen::Vector2f dir = (target - pos);
         dir.normalize();
         // Tangential distance from source to target
-        double target_t = (target(0) - pos(0)) / dir(0);
+        double target_t = - (target[0] - pos[0] + target[1] - pos[1]) / (dir[0] + dir[1]);
+        std::cout << pos.transpose() << ", " << dir.transpose() << ", " << target_t << std::endl;
         // Apply free space path loss
         double path_loss = fs_loss.sample(target_t);
         ray_pwr += path_loss;
