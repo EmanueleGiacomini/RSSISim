@@ -4,13 +4,15 @@
 import torch
 from torch import nn
 import numpy as np
+from torch.nn.modules.batchnorm import BatchNorm1d
 
 from ..io_utils import DataReader, FileType
 
 
 class SingleGWRegressor(nn.Module):
     def __init__(self, n_layers: int = 10, h_dim: int = 10, source_pos: torch.Tensor = torch.Tensor([0, 0]),
-                 wl: float = 0.1206, tx_pwr: float = 2+3*np.random.uniform(0, 4), polar=False, detection_estimation=False):
+                 wl: float = 0.1206, tx_pwr: float = 2+3*np.random.uniform(0, 4), polar=False, detection_estimation=False,
+                 batch_norm: bool = True, dropout: bool = False, dropout_rate: float = 0.2):
         """
 
         :param n_layers: number of hidden layers to be used
@@ -26,6 +28,12 @@ class SingleGWRegressor(nn.Module):
             [nn.Linear(2, h_dim)] +
             [nn.Linear(h_dim, h_dim) for _ in range(n_layers)] +
             [nn.Linear(h_dim, 1) if detection_estimation is False else nn.Linear(h_dim, 2)])
+        self.batch_norm = batch_norm
+        if batch_norm:
+            self.bn_lst = nn.ModuleList([nn.BatchNorm1d(h_dim) for _ in range(n_layers)])
+        self.dropout = dropout
+        if dropout:
+            self.dropout_layer = nn.Dropout(dropout_rate)
         self.source_pos = source_pos
         self.wl = wl
         self.tx_pwr = tx_pwr
@@ -73,7 +81,12 @@ class SingleGWRegressor(nn.Module):
             out = nn.ReLU()(self.layer_lst[0](x_local))
         
         for i in range(1, self.n_layers - 1):
-            out = nn.ReLU()(self.layer_lst[i](out))
+            out = self.layer_lst[i](out)
+            if self.dropout:
+                out = self.dropout_layer(out)
+            if self.batch_norm:
+                out = self.bn_lst[i](out)
+            out = nn.ReLU()(out)
         
         if self.detection_estimation is False:
             out = self.layer_lst[-1](out)

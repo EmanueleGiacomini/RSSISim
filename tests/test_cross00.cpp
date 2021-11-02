@@ -55,9 +55,22 @@ int main(int argc, char **argv) {
     std::srand(41);
     // Store results on file
     std::ofstream file;
-    file.open("cross01.csv");
+    file.open("cross01_full.csv");
     file << "x,y,recv_pwr0,recv_pwr1,recv_pwr2\n";
-    for(std::size_t i=0; i < NUM_SAMPLES; ++i) {
+    for(std::size_t x = 0; x < 100; ++x) {
+        for (std::size_t y = 0; y < 100; ++y) {
+            // Generate target
+            Eigen::Vector2f target = Eigen::Vector2f(x, y);
+            double recv_loss0 = rssisim::raytrace_trace(world, gw0, target);
+            double recv_loss1 = rssisim::raytrace_trace(world, gw1, target);
+            double recv_loss2 = rssisim::raytrace_trace(world, gw2, target);
+            double recv_pwr0 = rssisim::wtdbm(TX_POWER) + recv_loss0;
+            double recv_pwr1 = rssisim::wtdbm(TX_POWER) + recv_loss1;
+            double recv_pwr2 = rssisim::wtdbm(TX_POWER) + recv_loss2;
+            file << target.x() << "," << target.y() << "," << recv_pwr0 << "," << recv_pwr1 << "," << recv_pwr2 << "\n";    
+        }
+    }
+    /*for(std::size_t i=0; i < NUM_SAMPLES; ++i) {
         // Generate target
         Eigen::Vector2f target = 100 * (Eigen::Vector2f(1, 1) + Eigen::Vector2f::Random(2)) / 2;
         double recv_loss0 = rssisim::raytrace_trace(world, gw0, target);
@@ -69,6 +82,7 @@ int main(int argc, char **argv) {
         std::cout << i << std::endl;
         file << target.x() << "," << target.y() << "," << recv_pwr0 << "," << recv_pwr1 << "," << recv_pwr2 << "\n"; 
     }
+    */
 
     std::cout << "Done" << std::endl;
     file.close();

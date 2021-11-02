@@ -13,6 +13,7 @@ from torch import nn
 from torch.utils.data import TensorDataset, DataLoader, random_split
 import numpy as np
 from matplotlib import pyplot as plt
+import pandas as pd
 
 
 def _progress_cb(cval, fval, title, total_time, loss, val_loss, best_loss):
@@ -47,9 +48,9 @@ class Trainer():
     @staticmethod
     def train(train_x: np.float32, train_y: np.float32, model: nn.Module, optimizer: str, lr: float, epochs: int,
               best_fit: bool = True, early_stop: int = -1, plot_training: bool = False, train_test_split = 0.6, batch_size=64,
-              cuda_en: bool = True, detection_flag: bool = False, *args, **kwargs) -> (nn.Module, np.float32, np.float32):
+              cuda_en: bool = True, detection_flag: bool = False, cost_weights: (float, float) = (10, 1), *args, **kwargs) -> (nn.Module, pd.DataFrame):
 
-
+        
         use_cuda = torch.cuda.is_available() and cuda_en
         device = torch.device('cuda:0' if use_cuda else 'cpu')
         torch.backends.cudnn.benchmark = True
@@ -85,6 +86,25 @@ class Trainer():
 
         train_loss = np.zeros((epochs,))
         train_val_loss = np.zeros((epochs,))
+
+        def rssnet_loss(y_pred, y_true):
+            return cost_weights[0] * rssi_loss_fn(y_pred[:,:,0], y_true[:,:,0]) * y_true[:,:,1] + \
+                        cost_weights[1] * detect_loss_fn(y_pred[:,:,1], y_true[:,:,1])
+        
+        def metrics(y_pred, y_true):            
+            z_pred = y_pred[:, :, 0] * torch.round(y_pred[:, :, 1])
+            z_true = y_true[:, :, 0] * y_true[:, :, 1]
+            error = z_pred - z_true 
+            
+            mae = torch.abs(error).sum().data
+            mse = (error * error).sum().data
+            # r-square
+            z_true_mean = torch.mean(z_true)
+            r_square = 1 - mse / torch.sum((z_true - z_true_mean) ** 2)
+            return mae, mse, r_square
+
+        metrics_df = pd.DataFrame(columns=['mae', 'mse', 'r_2', 'rss_loss'])
+
         
         # Training loop
         t0 = time.perf_counter()
@@ -99,8 +119,8 @@ class Trainer():
                     loss = loss_fn(pred_batch, local_labels)
                     loss.backward()
                 else:
-                    loss = 10 * rssi_loss_fn(pred_batch[:,:,0], local_labels[:,:,0]) * local_labels[:,:,1] + \
-                        detect_loss_fn(torch.round(pred_batch[:,:,1]), torch.round(local_labels[:,:,1]))
+                    loss = cost_weights[0] * rssi_loss_fn(pred_batch[:,:,0], local_labels[:,:,0]) * local_labels[:,:,1] + \
+                        cost_weights[1] * detect_loss_fn(pred_batch[:,:,1], local_labels[:,:,1])
                     loss = loss.sum() / batch_size
                     loss.backward()
                 optim.step()
@@ -110,6 +130,7 @@ class Trainer():
             
             # Validation
             batch_v_loss = 0
+            metrics_epoch = np.zeros(4)
             with torch.set_grad_enabled(False):
                 for local_batch, local_labels in test_loader:
                     local_batch, local_labels = local_batch.to(device), local_labels.to(device)
@@ -117,16 +138,25 @@ class Trainer():
                     if detection_flag is False:
                         loss = loss_fn(pred_batch, local_labels)
                     else:
-                        
-                        loss = rssi_loss_fn(pred_batch[:,:,0], local_labels[:,:,0]) * local_labels[:,:,1] + \
-                            detect_loss_fn(torch.round(pred_batch[:,:,1]), torch.round(local_labels[:,:,1]))
+                        loss = cost_weights[0] * rssi_loss_fn(pred_batch[:,:,0], local_labels[:,:,0]) * local_labels[:,:,1] + \
+                            cost_weights[1] * detect_loss_fn(pred_batch[:,:,1], local_labels[:,:,1])
                         loss = loss.mean()    
+                    mae, mse, r_2 = metrics(pred_batch, local_labels)
+                    metrics_epoch[0] += mae.cpu().float()
+                    metrics_epoch[1] += mse.cpu().float()
+                    metrics_epoch[2] += r_2.cpu().float()
+
                     batch_v_loss += loss.cpu().float()
             
             batch_v_loss /= len(test_loader)
-
             train_loss[it] = batch_t_loss
             train_val_loss[it] = batch_v_loss
+
+            metrics_epoch /= len(test_loader)
+            metrics_epoch[3] = batch_v_loss
+
+            metrics_epoch_df = pd.DataFrame(metrics_epoch.reshape(1, -1), columns=['mae', 'mse', 'r_2', 'rss_loss'])             
+            metrics_df = metrics_df.append(metrics_epoch_df, ignore_index=True)
 
             if plot_training:
                 if it % 1 == 0:
@@ -151,4 +181,4 @@ class Trainer():
             model.cpu()
             model.load_state_dict(best_model_state_dict)
         
-        return model, train_loss, train_val_loss
+        return model, metrics_df

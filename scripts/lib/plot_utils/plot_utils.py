@@ -16,7 +16,7 @@ def build_generic_canvas(rows: int, cols: int, **kwargs):
 
 def draw_model_prediction(fig: plt.figure, ax: plt.axis, model: nn.Module, gw: int = 0,
                           min_point: (float, float) = (0, 0),
-                          max_point: (float, float) = (100, 100), resolution: float = 1,
+                          max_point: (float, float) = (500, 500), resolution: float = 1,
                           apply_ploss: bool = True, colorbar: bool = True , detection_flag: bool=False,
                           detection_threshold: float=-140, device='cpu', *args, **kwargs):
     x_mesh, y_mesh = np.mgrid[min_point[0]:max_point[0]:resolution, min_point[1]:max_point[1]:resolution]
@@ -26,7 +26,12 @@ def draw_model_prediction(fig: plt.figure, ax: plt.axis, model: nn.Module, gw: i
     if detection_flag is False:
         z = model(torch.from_numpy(data_x).to(device), apply_ploss).detach()[:, gw, 0].cpu().numpy()
     else:
-        z = model(torch.from_numpy(data_x).to(device), apply_ploss).detach()[:, gw, 0].cpu().numpy()
+        #z = model(torch.from_numpy(data_x).to(device), apply_ploss).detach()[:, gw, 0].cpu().numpy()
+        z = model(torch.from_numpy(data_x).to(device), apply_ploss).detach()[:, gw, :].cpu().numpy()
+        sub_z1 = z[:, 1]
+        sub_z = z[:, 0]
+        sub_z[sub_z1 < 0.9] = detection_threshold
+        z = z[:, 0]
     z = z.reshape((int(max_point[0] - min_point[0]), int(max_point[1] - min_point[1]))).transpose()
     z[z < detection_threshold] = detection_threshold
     im = ax.imshow(z, norm=colors.PowerNorm(gamma=2))

@@ -1,0 +1,40 @@
+{
+    "training": {
+        "train": true,
+        "optimizer": "adam",
+        "epochs": 500,
+        "lr": 1e-3,
+        "model": "models/omnet_10_30_polar.pth",
+        "data": "data/test-0617-wall-final.csv",
+        "data_gw": "data/omnet_gw.txt",
+        "data_type": "omnet",
+        "train_split" : 0.7,
+        "batch" : 32,
+        "cuda" : true,
+        "cw1" : 1.0,
+        "cw2" : 1.0,
+        "dropout" : false,
+        "dropout_rate" : 0.2,
+        "batch_norm" : false
+    },
+    "experiment": {
+        "wavelength": 0.1206,
+        "tx_pwr": 10,
+        "n_layers": 10,
+        "h_dim": 30,
+        "detection_flag": true,
+        "detection_threshold": -148,
+        "polar": true
+    },
+    "plot": {
+        "plot": false,
+        "plot_samples": false,
+        "plot_training": false,
+        "plot_obst": false,
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 100.0,
+        "max_y": 100.0,
+        "resolution": 1
+    }
+}

@@ -1,0 +1,41 @@
+{
+    "training": {
+        "train": true,
+        "optimizer": "adam",
+        "epochs": 500,
+        "lr": 1e-3,
+        "model": "models/cross01_30_10.pth",
+        "data": "data/cross01.csv",
+        "data_gw": "data/cross01_gw.txt",
+        "data_obst": "data/cross01_obst.txt",
+        "data_type": "rssisim",
+        "train_split" : 0.7,
+        "batch" : 64,
+        "cuda" : true,
+        "cw1" : 1.0,
+        "cw2" : 1.0,
+        "dropout" : false,
+        "dropout_rate" : 0.2,
+        "batch_norm" : false
+    },
+    "experiment": {
+        "wavelength": 0.1206,
+        "tx_pwr": 10,
+        "n_layers": 30,
+        "h_dim": 10,
+        "detection_flag": true,
+        "detection_threshold": -148,
+        "polar": false
+    },
+    "plot": {
+        "plot": false,
+        "plot_samples": false,
+        "plot_training": false,
+        "plot_obst": false,
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 100.0,
+        "max_y": 100.0,
+        "resolution": 1
+    }
+}

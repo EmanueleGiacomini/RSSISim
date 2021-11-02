@@ -83,8 +83,11 @@ class DataReader:
     @staticmethod
     def augmentDetection(data_y: np.array, detection_threshold: float) -> np.array:
         augm_y = np.zeros((data_y.shape[0], data_y.shape[1], 2))
-        augm_y[:, :, 0] = data_y
         augm_y[:, :, 1] = data_y > detection_threshold        
+        augm_y[:, :, 0] = data_y
+        to_repl = augm_y[:, :, 0]
+        to_repl[to_repl < detection_threshold] = detection_threshold
+        augm_y[:, :, 0] = to_repl         
         return augm_y.astype(np.float32)
 
 

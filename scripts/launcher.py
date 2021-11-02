@@ -8,6 +8,7 @@ from lib.plot_utils import *
 import argparse
 import os
 import torch
+import pandas as pd
 
 class bcolors:
     HEADER = '\033[95m'
@@ -54,7 +55,7 @@ if __name__ == '__main__':
         action=LoadFromFile)
 
     parser.add_argument('--h_dim', help="dimension of latent space for neural network (height of layer)", type=int, default=10, required=False)
-    parser.add_argument('--num_layers', help="number of layers for the neural network (depth of network)", type=int, default=5, required=False)
+    parser.add_argument('--n_layers', help="number of layers for the neural network (depth of network)", type=int, default=5, required=False)
     parser.add_argument('--polar', help="Transform model's feature into polar coordinates", required=False, action='store_true')
     parser.add_argument('--batch', help="Size of training batches", type=int, default=64, required=False)
     parser.add_argument('--tx_pwr', help="Tx power of the moving beacon in Watts", type=float, default=1, required=False)
@@ -62,6 +63,12 @@ if __name__ == '__main__':
     parser.add_argument('--detection_threshold', help='Minimum value in dBm for detection. Readings under this value are considered undetected',
         type=float, default=-140, required=False)
     parser.add_argument('--cuda', help='Enable CUDA routines for GPU training', type=bool, default=True, required=False)
+    parser.add_argument('--cw1', help='Cost weight for regression on available measurements', type=float, default=10., required=False)
+    parser.add_argument('--cw2', help='Cost weight for regression on availability', type=float, default=1., required=False)
+    parser.add_argument('--batch_norm', help='Add Batch Normalization layers on the model', action='store_true', required=False)
+    parser.add_argument('--dropout', help='Add a Dropout layer on the model', action='store_true', required=False)
+    parser.add_argument('--dropout_rate', help='Dropout rate. Requires dropout parameter', type=float, default=0.2, required=False)
+
 
     args = parser.parse_args()
 
@@ -114,14 +121,18 @@ if __name__ == '__main__':
 
         print(bcolors.OKCYAN + 'Training mode' + bcolors.ENDC)
         model = MultiGWRegressor(len(gw_pos), gw_pos, wl=args.wavelength, n_layers=args.n_layers, h_dim=args.h_dim, tx_pwr=args.tx_pwr,
-            detection_estimation=args.detection_flag)
-        model, train_loss, train_val_loss = Trainer.train(data_x, data_y, model, optimizer=args.optimizer, epochs=args.epochs,
+            detection_estimation=args.detection_flag, dropout=args.dropout, dropout_rate=args.dropout_rate, batch_norm=args.batch_norm)
+        print(sum([p.numel() for p in model.parameters()]) / 3)
+        model, model_df = Trainer.train(data_x, data_y, model, optimizer=args.optimizer, epochs=args.epochs,
                               best_fit=True, early_stop=-1, lr=args.lr, plot_training=args.plot_training,
                               batch_size=args.batch, train_test_split=args.train_split, detection_flag=args.detection_flag,
-                              cuda_en=args.cuda)
+                              cuda_en=args.cuda, cost_weights=(args.cw1, args.cw2))
                               #best_fit=True, early_stop=-1, lr=1e-2, plot_training=args.plot_training)
         # Store model
         torch.save(model, args.model)
+        # Store dataframe
+        model_name = args.model[args.model.find('/'):args.model.find('.pth')]
+        model_df.to_csv('./eval/' + model_name + '.csv')
     else:
         print(bcolors.OKCYAN + 'Evaluation mode' + bcolors.ENDC)
         model = torch.load(args.model)
@@ -149,8 +160,10 @@ if __name__ == '__main__':
             axs[i].set_ylim(args.min_y, args.max_y)
         
         plt.tight_layout()
-        plt.savefig('./images/' + model_name + '_intensity.jpg')
+        plt.show()
+        #plt.savefig('./images/' + model_name + '_intensity.jpg')
         # Training history
+        """
         if args.train:
             plt.clf()
             fig, axs = build_generic_canvas(1, 1, figsize=(10, 10))
@@ -160,6 +173,7 @@ if __name__ == '__main__':
             axs.plot(train_val_loss, 'C1', label='val loss')
             axs.legend()
             plt.tight_layout()
-            plt.savefig('./images/' + model_name + '_train_hist.jpg')
+            #plt.savefig('./images/' + model_name + '_train_hist.jpg')
+        """
 
     exit(0)
